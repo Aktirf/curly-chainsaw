@@ -1,0 +1,264 @@
+@startmindmap
+<style>
+mindmapDiagram {
+  node {
+    BackgroundColor #F5F9FF
+    LineColor #2C5F9E
+    FontColor #1A1A1A
+  }
+  :depth(0) {
+    BackgroundColor #2C5F9E
+    FontColor white
+    FontSize 20
+    FontStyle bold
+  }
+  :depth(1) {
+    BackgroundColor #D6E4F5
+    FontStyle bold
+  }
+  :depth(2) {
+    BackgroundColor #E3EEF9
+  }
+  :depth(3) {
+    BackgroundColor #FFF3CD
+  }
+  :depth(4) {
+    BackgroundColor #E6F4EA
+  }
+}
+</style>
+
+* Интернет-магазин
+
+** 1. Архитектура
+*** Модульный монолит
+*** Слои
+**** Presentation (HTTP)
+**** Application (Services)
+**** Domain (Entities, Rules)
+**** Infrastructure (DB, Redis, S3)
+*** C4
+**** Context (акторы + внешние системы)
+**** Containers (SPA, API, Worker, PG, Redis, S3)
+*** Deployment
+**** Nginx (TLS, rate-limit)
+**** app-1 / app-2 (API)
+**** worker (BullMQ)
+**** PostgreSQL (primary + replica)
+**** Redis (cache + queue)
+**** MinIO / S3
+
+** 2. Модули backend
+*** auth
+**** AuthController
+**** AuthService
+**** JwtProvider
+**** PasswordHasher
+*** users
+**** UserRepository
+*** catalog
+**** ProductService
+**** CategoryService
+**** ImageStorage
+*** cart
+**** CartService
+**** RedisCartStore
+*** orders
+**** OrderService
+**** OrderStateMachine
+*** payments
+**** PaymentService
+**** PaymentProviderClient
+**** WebhookHandler
+*** promo
+**** PromoService
+*** reviews
+**** ReviewService
+*** admin
+**** AdminService
+**** RbacGuard
+**** AuditLog
+
+** 3. Роли (roles)
+*** user
+**** Каталог, корзина, заказы, отзывы
+*** admin
+**** CRUD товаров/категорий/промокодов
+**** Управление заказами
+**** Возврат средств
+**** Модерация
+**** Блокировка пользователей
+
+** 4. Доменные сущности (БД)
+*** roles
+**** id, name
+*** users
+**** id, name, email, phone
+**** password_hash, role_id, city
+*** categories
+**** id, name, slug, parent_id (self-ref)
+*** products
+**** id, name, price, old_price
+**** category_id, brand, material
+**** stock, is_eco, is_hit
+*** promo_codes
+**** id, code, discount_percent
+**** expires_at, usage_limit, used_count
+*** orders
+**** id, user_id, status
+**** total_amount
+**** delivery_*, payment_*
+**** promo_code_id
+*** order_positions
+**** id, order_id, product_id, quantity
+*** payments
+**** id, order_id (UNIQUE)
+**** amount, method, status, paid_at
+*** reviews
+**** id, product_id, user_id
+**** rating (1..5), text, likes
+
+** 5. Use Cases
+*** Гость
+**** Регистрация
+**** Вход
+**** Восстановление пароля
+**** Просмотр каталога
+*** Пользователь
+**** Профиль (редактирование, пароль)
+**** Корзина (add/edit/remove)
+**** Оформление заказа
+**** Применение промокода
+**** Отмена заказа
+**** Мои заказы
+**** Инициализация оплаты
+**** Отзывы (CRUD + лайк)
+*** Администратор
+**** Управление ролями
+**** Блокировка пользователей
+**** CRUD товаров/категорий
+**** Загрузка изображений
+**** Управление заказами (статусы)
+**** Возврат средств
+**** Модерация отзывов
+**** CRUD промокодов
+**** Статистика
+*** Платёжный провайдер (webhook)
+**** Подтверждение оплаты
+**** Неуспешная оплата
+*** Планировщик
+**** Отмена неоплаченных заказов
+**** Пересчёт рейтинга
+**** Истечение промокодов
+
+** 6. Сценарии (Sequence)
+*** Оформление заказа
+**** BEGIN
+**** SELECT products FOR UPDATE
+**** INSERT order + positions
+**** UPDATE stock
+**** UPDATE promo used_count
+**** COMMIT
+**** publish OrderCreated
+*** Webhook оплаты
+**** verify signature
+**** idempotent check
+**** UPDATE payments + orders
+**** publish PaymentPaid
+*** Auth
+**** validate → hashPassword
+**** INSERT users
+**** Set-Cookie refresh
+**** Return JWT access
+
+** 7. Статусы
+*** OrderStatus
+**** new
+**** awaiting_payment
+**** paid
+**** shipped
+**** delivered
+**** cancelled
+*** PaymentStatus
+**** pending
+**** paid
+**** failed
+**** refunded
+
+** 8. ADR (решения)
+*** JWT + refresh в httpOnly
+*** RBAC через role_id
+*** Корзина в Redis (TTL 30 дн)
+*** Транзакция placeOrder
+*** Идемпотентный webhook
+*** S3 для картинок
+*** Redis-кэш каталога
+*** BullMQ для фоновых задач
+*** Structured logs + Prometheus
+
+** 9. NFR
+*** p95 GET /products < 200 мс
+*** Горизонтальное масштабирование API
+*** Primary + Replica PG
+*** Безопасность: bcrypt, HTTPS, CSRF, rate-limit
+*** Бэкапы: pg_dump + WAL
+*** OpenAPI 3.0
+*** Healthcheck /health
+
+** 10. Рекомендации по схеме
+*** order_positions.price_at_purchase
+*** UNIQUE (product_id, user_id) в reviews
+*** reviews.is_hidden
+*** review_likes (review_id, user_id)
+*** users.is_blocked
+*** products.rating (денормализация)
+*** payments.external_id + provider_payload
+*** audit_log
+*** Индексы: orders(user_id, status), products(category_id)
+
+left side
+
+** 11. Внешние системы
+*** Payment Provider
+**** ЮKassa / Tinkoff / Stripe
+*** Email / SMS
+**** SendGrid / SMS.ru
+*** S3 / CDN
+**** MinIO / AWS S3
+
+** 12. Клиенты
+*** Web SPA (React/Vue)
+*** Admin Panel
+*** Mobile (опционально)
+
+** 13. Фоновые задачи
+*** cancel-stale-orders
+**** status=awaiting_payment > 24h
+**** вернуть stock
+**** откатить promo
+*** recalc-product-rating
+**** AVG(rating) → products.rating
+*** expire-promo-codes
+**** expires_at < now → is_active=false
+
+** 14. Технологический стек (пример)
+*** Backend: Node.js + NestJS
+*** ORM: TypeORM / Prisma
+*** Frontend: React / Vue
+*** БД: PostgreSQL 15+
+*** Кэш: Redis 7
+*** Очереди: BullMQ
+*** Файлы: MinIO
+*** Прокси: Nginx
+*** CI/CD: GitHub Actions
+*** Мониторинг: Prometheus + Grafana
+
+** 15. Инфраструктура
+*** docker-compose (dev)
+*** Kubernetes (prod)
+*** Миграции: Flyway / Prisma Migrate
+*** Логи: pino/winston
+*** Трейсинг: OpenTelemetry (опц.)
+*** Sentry для ошибок
+
+@endmindmap
